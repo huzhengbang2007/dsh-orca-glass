@@ -1,0 +1,34 @@
+{
+  "skinManifestVersion": 2,
+  "id": "orca-scene",
+  "name": "虎鲸链路 · 场景背景",
+  "nameEn": "ORCA LINK Scene Background",
+  "version": "1.1.5",
+  "author": "Small-tailqwq (artwork) / local background skin",
+  "tagline": "深海机械舱 · 夜间书房 · 磨砂玻璃",
+  "description": "背景媒体 + 半透明磨砂皮肤：亮色用 ORCA LINK 的白色机械舱场景，暗色用夜间书房场景；把 shell 的表面 token 换成半透明并对侧边栏、输入框、气泡加高斯模糊，配色仍取自 DSH 官方静态色板。",
+  "tags": ["orca", "whale", "background", "scene"],
+  "accent": "#086cff",
+  "order": 20,
+  "license": "CC BY-NC-SA 4.0 (artwork only, non-commercial)",
+  "sourceUrl": "https://github.com/Small-tailqwq/dsh-deep-whale/tree/main/orca-link",
+  "attribution": "Artwork by Small-tailqwq, derived from the whale-girl character by 上善无形; non-commercial use only.",
+  "preview": {
+    "light": "preview/light.webp",
+    "dark": "preview/dark.webp"
+  },
+  "contributes": {
+    "stylesheet": "skin.css",
+    "patches": "patches.css",
+    "backgroundMedia": {
+      "light": {
+        "type": "image",
+        "src": "assets/light.webp"
+      },
+      "dark": {
+        "type": "image",
+        "src": "assets/dark.webp"
+      }
+    }
+  }
+}

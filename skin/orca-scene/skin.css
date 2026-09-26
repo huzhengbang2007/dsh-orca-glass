@@ -1,0 +1,68 @@
+/* orca-scene — 露出背景用的「表面 token」覆盖层（L1/L2）。
+ *
+ * 只做一件事：把 shell 里不透明的面板表面换成半透明，让固定的背景层透出来。
+ * 颜色全部取自 DSH 官方静态色板（--dsw-static-*），因此明暗主题自动跟随。
+ * 不透明度跟随皮肤中心的「背景不透明度」滑杆（--dsw-skin-scrim，0..1）：
+ *   alpha = (1 - scrim) * N%
+ * 所以滑杆拉满 = 背景被遮蔽、面板回到实色，符合皮肤中心对遮蔽的语义。
+ *
+ * 写入 :root 的 token 会被皮肤中心自动克隆到 body（并给 html 置 initial），
+ * 因此这里不需要自己写 body 选择器。
+ *
+ * Artwork (c) Small-tailqwq, derived from the whale-girl character by 上善无形;
+ * CC BY-NC-SA 4.0, 非商用。
+ */
+
+:root {
+  /* 画布层：整屏底色，压得很低才能看见背景艺术图 */
+  --dsw-alias-bg-base: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) calc((1 - var(--dsw-skin-scrim, 0)) * 20%), transparent);
+
+  /* 面板层：卡片、列表、模块容器 */
+  --dsw-alias-bg-layer-1: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) calc((1 - var(--dsw-skin-scrim, 0)) * 58%), transparent);
+  --dsw-alias-bg-layer-2: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) calc((1 - var(--dsw-skin-scrim, 0)) * 55%), transparent);
+  --dsw-alias-bg-layer-3: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) calc((1 - var(--dsw-skin-scrim, 0)) * 52%), transparent);
+  --dsw-alias-bg-module-platform: color-mix(in srgb, var(--dsw-static-neutral-bluish-60) calc((1 - var(--dsw-skin-scrim, 0)) * 60%), transparent);
+
+  /* 浮层：菜单 / 弹窗，保留可读性，只轻微透 */
+  --dsw-alias-bg-overlay: color-mix(in srgb, var(--dsw-static-neutral-bluish-150) calc((1 - var(--dsw-skin-scrim, 0)) * 92%), transparent);
+
+  /* 代码块底色（皮肤中心会把 --shiki-background 指到这里） */
+  --dsw-alias-markdown-code-block: color-mix(in srgb, var(--dsw-static-neutral-bluish-50) calc((1 - var(--dsw-skin-scrim, 0)) * 74%), transparent);
+
+  /* 左导航列 / 右详情栏 / 会话头用的填充色 */
+  --dsw-specific-sidebar-fill: color-mix(in srgb, var(--dsw-static-neutral-bluish-50) calc((1 - var(--dsw-skin-scrim, 0)) * 44%), transparent);
+
+  /* 输入框（输入卡）底色 */
+  --dsw-specific-input-major: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) calc((1 - var(--dsw-skin-scrim, 0)) * 70%), transparent);
+
+  /* 输入区最下面那两个「配件」气泡的描边（轮数/步数那排 + 本会话费用芯片）。
+     必须走 shell 的官方钩子：dsh-client-ui-workspace 里有一条 !important 规则
+       html[data-dsh-skin] [data-phase='active'] [data-slot='conversation.composer.dock'] > * {
+         border: var(--dsh-composer-accessory-border, none) !important;
+         box-shadow: var(--dsh-composer-accessory-shadow, var(--dsw-shadow-lv1, ...)) !important; }
+     特指度 (0,3,1)、还带 !important —— 在 patches.css 里怎么加选择器都压不住（实测：
+     box-shadow 生效、border 被它的 none 顶掉），所以只能给变量赋值，由它自己贴上去。 */
+  --dsh-composer-accessory-border: 1px solid rgba(8, 108, 255, 0.55);
+  --dsh-composer-accessory-shadow: 0 0 0 1px rgba(8, 108, 255, 0.12), 0 2px 10px rgba(8, 60, 160, 0.12);
+}
+
+body[data-ds-dark-theme] {
+  --dsw-alias-bg-base: color-mix(in srgb, var(--dsw-static-neutral-bluish-950) calc((1 - var(--dsw-skin-scrim, 0)) * 26%), transparent);
+
+  --dsw-alias-bg-layer-1: color-mix(in srgb, var(--dsw-static-neutral-bluish-875) calc((1 - var(--dsw-skin-scrim, 0)) * 62%), transparent);
+  --dsw-alias-bg-layer-2: color-mix(in srgb, var(--dsw-static-neutral-bluish-850) calc((1 - var(--dsw-skin-scrim, 0)) * 58%), transparent);
+  --dsw-alias-bg-layer-3: color-mix(in srgb, var(--dsw-static-neutral-bluish-800) calc((1 - var(--dsw-skin-scrim, 0)) * 56%), transparent);
+  --dsw-alias-bg-module-platform: color-mix(in srgb, var(--dsw-static-neutral-bluish-800) calc((1 - var(--dsw-skin-scrim, 0)) * 62%), transparent);
+
+  --dsw-alias-bg-overlay: color-mix(in srgb, var(--dsw-static-neutral-bluish-700) calc((1 - var(--dsw-skin-scrim, 0)) * 92%), transparent);
+
+  --dsw-alias-markdown-code-block: color-mix(in srgb, var(--dsw-static-neutral-bluish-900) calc((1 - var(--dsw-skin-scrim, 0)) * 76%), transparent);
+
+  --dsw-specific-sidebar-fill: color-mix(in srgb, var(--dsw-static-neutral-bluish-900) calc((1 - var(--dsw-skin-scrim, 0)) * 48%), transparent);
+
+  --dsw-specific-input-major: color-mix(in srgb, var(--dsw-static-neutral-bluish-850) calc((1 - var(--dsw-skin-scrim, 0)) * 70%), transparent);
+
+  /* 同上的配件气泡描边：暗色下换成更亮的蓝，阴影压深一点 */
+  --dsh-composer-accessory-border: 1px solid rgba(86, 156, 255, 0.6);
+  --dsh-composer-accessory-shadow: 0 0 0 1px rgba(86, 156, 255, 0.14), 0 2px 12px rgba(0, 16, 48, 0.38);
+}

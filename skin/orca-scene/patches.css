@@ -1,0 +1,435 @@
+/* orca-scene — L3 patches v2：液态玻璃（Liquid Glass）
+ *
+ * 工作原理：背景是皮肤中心挂的一张负 z-index 固定图（setBackgroundLayer），
+ * 所以元素只要有半透明底色 + backdrop-filter，背后的艺术图就会被糊成磨砂。
+ * 底色由 skin.css 的 token 覆盖提供；这里负责「磨砂 + 高光 + 色散 + 投影」。
+ *
+ * === 已对着 DSH 0.1.7-rc.2 的包源码逐个核对过的真实钩子（不要凭记忆改）===
+ *   [class*='sidebarCol'] / [class*='rightbarCol']   左栏 / 右详情栏
+ *       出处 dsh-client-ui-layout/lib/client.js：.pI_x6G_sidebarCol{background:var(--dsw-specific-sidebar-fill)}
+ *       （旧写法 [data-pane="sidebar"] / [data-slot="sidebar"] 在本版本不存在，是它让侧边栏没模糊）
+ *   [data-phase='active'] [data-conversation-scroll]  聊天滚动区
+ *   [class*='userStack'] [class*='bubble']            用户气泡（dsh-client-ui-chat）
+ *   [class*='markdown']                               AI 回复正文
+ *       出处 dsh-client-ui-primitives/lib/markdown/MarkdownText.module.css 的 .markdown
+ *   [data-composer-card] / [data-composer-seat]       输入卡 / 输入区锚点
+ *   [data-slot='...'] 是 slot 锚点 div，样式为 display:contents —— 自身不能上底色/磨砂，
+ *       只能当「后代选择器」的过路条件用。
+ *   内置的 --dsw-static-XX 色板定义在 :root，--dsw-alias-XX 与 --dsw-specific-XX 在 body
+ *   （暗色那套写在 body[data-ds-dark-theme]）。
+ *
+ * 强度跟随皮肤中心滑杆（滑杆为 0 时仍保留可用下限）：
+ *   气泡/工具行 : --dsh-skin-bubble-blur / --dsh-skin-bubble-alpha
+ *   面板        : 固定值
+ *
+ * Artwork (c) Small-tailqwq, derived from the whale-girl character by 上善无形;
+ * CC BY-NC-SA 4.0, 非商用。
+ */
+
+/* ========================= 0. 背景承载 ========================= */
+/* 背景层挂在 #root 之下，壳的根节点必须透明才能看见艺术图 */
+[id="root"] {
+  background: none !important;
+}
+
+/* ========================= 1. 左侧边栏 ========================= */
+/* 真实类名 [class*='sidebarCol']；底色原本来自 --dsw-specific-sidebar-fill
+   （skin.css 已把它调成半透明），这里补磨砂与液态玻璃的高光/色散。 */
+/* 选择器故意把 [class*='sidebarCol'] 写两遍（+1 特指度）、并加 body 前缀，
+   否则压不过插件里带 !important 的规则 —— 只为了单独关掉它的外投影。 */
+body [class*='sidebarCol'][class*='sidebarCol'] {
+  position: relative;
+  background: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 28%, transparent) !important;
+  border-right: 1px solid rgba(150, 190, 245, 0.38) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(1.7) brightness(1.04);
+  backdrop-filter: blur(26px) saturate(1.7) brightness(1.04);
+  /* 只留 inset：外投影会贴着实边栏右缘画一条暗带，在半透明中栏上会透出来，
+     看起来像「阴影挡住了侧边栏」。层次感交给 1px 边框 + inset 高光。 */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.12),
+    inset 1.5px 0 0 rgba(130, 205, 255, 0.28),
+    inset -1.5px 0 0 rgba(255, 145, 190, 0.2) !important;
+}
+
+body[data-ds-dark-theme] [class*='sidebarCol'][class*='sidebarCol'] {
+  background: color-mix(in srgb, var(--dsw-static-neutral-bluish-900) 36%, transparent) !important;
+  border-right-color: rgba(120, 160, 210, 0.3) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.03),
+    inset 1.5px 0 0 rgba(110, 190, 255, 0.22),
+    inset -1.5px 0 0 rgba(255, 130, 180, 0.16) !important;
+}
+
+/* 圆角卡比原生栏窄了 2×10px，而栏内内容是按原生宽度排的 → 右缘那 20px 会被卡的
+   overflow:hidden 裁掉（收起箭头、余额那行的 ⚠）。这里让内容盒跟着卡片一起缩，
+   内部元素允许收缩，整栏就落在卡内了（左右各留 12px，和左缘对称）。
+   收起成 56px 图标轨道时不要动：那时内容本来就窄，硬缩会把图标挤变形。 */
+body [class*='sidebarCol']:not([data-sidebar-collapsed], [data-sidebar-collapsed] *) [class*='root'] {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* 侧边栏玻璃的斜向高光（液态玻璃的「弧面反光」） */
+[class*='sidebarCol']::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.3) 0%,
+    rgba(255, 255, 255, 0) 38%,
+    rgba(255, 255, 255, 0) 62%,
+    rgba(190, 225, 255, 0.16) 100%
+  );
+  mix-blend-mode: screen;
+}
+
+/* 注：这里不写 @media —— 皮肤中心会逐条给选择器加 html[data-dsh-skin] 前缀，
+   at-rule 会被当成选择器一起前缀化而失效。 */
+
+/* 叠层（这里的 ::before 斜向高光、插件的 ::after 颗粒）都是绝对定位的，会盖在内容之上：
+   把侧栏的直接子元素抬起来，图标 / 文字就不会被压得发灰。 */
+body [class*='sidebarCol'] > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ========================= 2. 右侧详情栏（浮空玻璃卡） ========================= */
+/* 主人 m01769：左右侧边栏都要圆角悬浮。左栏由插件的浮空卡负责（margin 10 / radius 18），
+   右栏原本是贴边满高的一块，这里给它同一套：对称 10px 留白 + 18px 圆角 + 1px 描边。
+   同样不放外投影（会贴着中栏画暗带），深度感交给边框 + inset 高光（高光在左缘，和左栏镜像）。
+   overflow:hidden 让有自己底色的子块不越出圆角（背景/边框本身已按圆角裁剪）。
+   注意 backdrop-filter 不加 !important —— 插件里的 url(#orca-lg-soft) 折射才是主，这里是兜底。 */
+body [class*='rightbarCol'][class*='rightbarCol'] {
+  margin: 10px !important;
+  background: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 52%, transparent) !important;
+  border: 1px solid rgba(150, 190, 245, 0.38) !important;
+  border-radius: 18px !important;
+  overflow: hidden;
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  backdrop-filter: blur(20px) saturate(1.5);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 1px 0 0 rgba(130, 205, 255, 0.16) !important;
+}
+
+body[data-ds-dark-theme] [class*='rightbarCol'][class*='rightbarCol'] {
+  background: color-mix(in srgb, var(--dsw-static-neutral-bluish-900) 58%, transparent) !important;
+  border-color: rgba(120, 160, 210, 0.3) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 1px 0 0 rgba(110, 190, 255, 0.12) !important;
+}
+
+/* 详情栏里的面板（P3OORG_panel）是 position:absolute; right:0; 宽度由内容撑出来的
+   （内容按原生 675px 排），卡一缩进它就在左侧多出 22px，被 overflow:hidden 裁掉 ——
+   表现是面板里标题的首字缺一块。把面板钉回卡的内容盒，并让内部一起收缩。 */
+body [class*='rightbarCol'] [class*='panel'] {
+  left: 0 !important;
+  right: 0 !important;
+  width: auto !important;
+  min-width: 0 !important;
+}
+body [class*='rightbarCol'] [class*='panel'] * {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+/* ========================= 3. 会话头 ========================= */
+/* 裸 <header>（会话标题条）在 [data-phase] 之内；避免匹配 headerActions 等子块，用元素选择器 */
+[data-phase='active'] header,
+header[class*='header'] {
+  background: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 40%, transparent) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  backdrop-filter: blur(18px) saturate(1.5);
+  box-shadow: inset 0 -1px 0 rgba(150, 190, 245, 0.22);
+}
+
+body[data-ds-dark-theme] [data-phase='active'] header,
+body[data-ds-dark-theme] header[class*='header'] {
+  background: color-mix(in srgb, var(--dsw-static-neutral-bluish-900) 50%, transparent) !important;
+  box-shadow: inset 0 -1px 0 rgba(120, 160, 210, 0.24);
+}
+
+/* ========================= 4. AI 回复正文（磨砂玻璃板） ========================= */
+/* 助手消息就是一串 MarkdownText 块，容器类是 .markdown（无独立卡片），
+   所以直接把它做成玻璃板——这也是「我说的话有模糊、你的回复没有」的根因。 */
+[data-conversation-scroll] [class*='markdown'] {
+  position: relative;
+  background: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 42%, transparent);
+  border: 1px solid rgba(150, 190, 245, 0.3);
+  border-radius: 16px;
+  padding: 12px 16px 14px;
+  -webkit-backdrop-filter: blur(18px) saturate(1.55) brightness(1.03);
+  backdrop-filter: blur(18px) saturate(1.55) brightness(1.03);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 1.5px 0 0 rgba(130, 205, 255, 0.22),
+    inset -1.5px 0 0 rgba(255, 145, 190, 0.16),
+    0 8px 26px rgba(12, 28, 58, 0.1);
+}
+
+body[data-ds-dark-theme] [data-conversation-scroll] [class*='markdown'] {
+  background: color-mix(in srgb, var(--dsw-static-neutral-bluish-900) 52%, transparent);
+  border-color: rgba(120, 160, 210, 0.26);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 1.5px 0 0 rgba(110, 190, 255, 0.18),
+    inset -1.5px 0 0 rgba(255, 130, 180, 0.14),
+    0 10px 28px rgba(0, 0, 0, 0.36);
+}
+
+/* 玻璃板上的斜向高光 */
+[data-conversation-scroll] [class*='markdown']::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.24) 0%,
+    rgba(255, 255, 255, 0) 34%,
+    rgba(255, 255, 255, 0) 66%,
+    rgba(190, 225, 255, 0.12) 100%
+  );
+  mix-blend-mode: screen;
+}
+
+/* 嵌套复位：思考区/压缩摘要里的 markdown 不再叠一层板；板中板同理 */
+[class*='thinkBody'] [class*='markdown'],
+[class*='compactionBody'] [class*='markdown'],
+[data-conversation-scroll] [class*='markdown'] [class*='markdown'] {
+  background: none;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+[class*='thinkBody'] [class*='markdown']::before,
+[class*='compactionBody'] [class*='markdown']::before,
+[data-conversation-scroll] [class*='markdown'] [class*='markdown']::before {
+  display: none;
+}
+
+/* ========================= 5. 用户气泡 ========================= */
+/* 滑杆 120%：比自己说的话更厚一档的液态玻璃 */
+[data-slot='main.conversation'] [class*='userStack'] [class*='bubble'] {
+  position: relative;
+  background: color-mix(in srgb, var(--dsw-static-deepseek-50) calc(var(--dsh-skin-bubble-alpha, 0.5) * 120%), transparent);
+  border: 1px solid rgba(150, 190, 245, 0.34);
+  border-radius: 16px;
+  -webkit-backdrop-filter: blur(calc(var(--dsh-skin-bubble-blur, 10px) * 1.2)) saturate(1.6) brightness(1.03);
+  backdrop-filter: blur(calc(var(--dsh-skin-bubble-blur, 10px) * 1.2)) saturate(1.6) brightness(1.03);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 1.5px 0 0 rgba(130, 205, 255, 0.24),
+    inset -1.5px 0 0 rgba(255, 145, 190, 0.18),
+    0 6px 20px rgba(12, 28, 58, 0.1);
+}
+
+body[data-ds-dark-theme] [data-slot='main.conversation'] [class*='userStack'] [class*='bubble'] {
+  background: color-mix(in srgb, var(--dsw-static-neutral-bluish-850) calc(var(--dsh-skin-bubble-alpha, 0.5) * 120%), transparent);
+  border-color: rgba(120, 160, 210, 0.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 1.5px 0 0 rgba(110, 190, 255, 0.2),
+    inset -1.5px 0 0 rgba(255, 130, 180, 0.15),
+    0 8px 24px rgba(0, 0, 0, 0.36);
+}
+
+/* ========================= 6. 工具调用行 ========================= */
+[data-slot='main.conversation'] [class*='callRow'] {
+  background: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) calc(var(--dsh-skin-bubble-alpha, 0.5) * 100%), transparent);
+  border: 1px solid rgba(150, 190, 245, 0.24);
+  border-radius: 12px;
+  padding: 1px 8px;
+  width: fit-content;
+  max-width: 100%;
+  -webkit-backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.5);
+  backdrop-filter: blur(var(--dsh-skin-bubble-blur, 10px)) saturate(1.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42);
+}
+
+body[data-ds-dark-theme] [data-slot='main.conversation'] [class*='callRow'] {
+  background: color-mix(in srgb, var(--dsw-static-neutral-bluish-900) calc(var(--dsh-skin-bubble-alpha, 0.5) * 100%), transparent);
+  border-color: rgba(120, 160, 210, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* 行内还有两层近乎相同的容器，只给外层上板，内层复位（否则同色叠三遍） */
+[data-slot='conversation.session'] [class*='callRow'] [class*='root'],
+[data-slot='conversation.session'] [class*='callRow'] [class*='summary'],
+[data-slot='conversation.session'] [class*='callRow'] [data-disclosure-row],
+body[data-ds-dark-theme] [data-slot='conversation.session'] [class*='callRow'] [class*='root'],
+body[data-ds-dark-theme] [data-slot='conversation.session'] [class*='callRow'] [class*='summary'],
+body[data-ds-dark-theme] [data-slot='conversation.session'] [class*='callRow'] [data-disclosure-row] {
+  background: none;
+  border: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  margin: 0;
+  width: auto;
+  max-width: none;
+}
+
+/* ========================= 7. 输入卡 ========================= */
+/* 磨砂由皮肤中心自带的 neutralizer 用 !important 驱动（跟随 inputCardBlur 设置），
+   这里只补结构与高光；兜底的一条不带 !important，neutralizer 生效时自然让位。 */
+[data-composer-card] {
+  border: 1px solid rgba(150, 190, 245, 0.32);
+  border-radius: 20px;
+  -webkit-backdrop-filter: blur(14px) saturate(1.5);
+  backdrop-filter: blur(14px) saturate(1.5);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 1.5px 0 0 rgba(130, 205, 255, 0.2),
+    inset -1.5px 0 0 rgba(255, 145, 190, 0.15),
+    0 10px 30px rgba(12, 28, 58, 0.14);
+}
+
+body[data-ds-dark-theme] [data-composer-card] {
+  border-color: rgba(120, 160, 210, 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 1.5px 0 0 rgba(110, 190, 255, 0.18),
+    inset -1.5px 0 0 rgba(255, 130, 180, 0.14),
+    0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+/* ========================= 8. 设置页 / 弹窗：压回不透明 ========================= */
+/* 「设置」的结构（dsh-client-ui-settings-general/lib/client.js:277-290，createPortal 到 body）：
+     div.overlay[role=presentation]  position:fixed inset:0  —— 纯容器，无底色
+       div.mask                     background: var(--dsw-alias-bg-mask-1)
+       div.panel[role=dialog][data-shortcut-modal=settings]
+                                    width:800px  background: var(--dsw-alias-bg-layer-2)
+   真正有底色的是最后那个 panel，而 skin.css 把 --dsw-alias-bg-layer-2 调成了半透明，
+   于是整个设置页跟着透、正文发虚 —— 这里把它单独按回 94% 不透明。
+   [role='dialog'] 同样命中其它弹窗的可见面板（Modal 的 .dialog 也带这个 role）。 */
+[role='dialog'],
+[data-shortcut-modal='settings'] {
+  background: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) calc((1 - var(--dsw-skin-scrim, 0)) * 94%), transparent) !important;
+  -webkit-backdrop-filter: blur(30px) saturate(1.3);
+  backdrop-filter: blur(30px) saturate(1.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 24px 60px rgba(12, 28, 58, 0.22);
+}
+
+body[data-ds-dark-theme] [role='dialog'],
+body[data-ds-dark-theme] [data-shortcut-modal='settings'] {
+  background: color-mix(in srgb, var(--dsw-static-neutral-bluish-875) calc((1 - var(--dsw-skin-scrim, 0)) * 94%), transparent) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 24px 60px rgba(0, 0, 0, 0.5);
+}
+
+/* 保险：皮肤给侧边栏加了 backdrop-filter，而 backdrop-filter 会成为「固定定位后代」的包含块。
+   DSH 0.1.7 的设置页走 createPortal 不受影响，但若有插件把 fixed 浮层直接渲染在侧边栏列里，
+   它会被锚进 254px 的栏内（还会被 overflow 裁掉）。开弹窗时先摘掉磨砂即可。 */
+[class*='sidebarCol']:has([role='dialog']) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* ========================= 9. 菜单与提示气泡：磨砂 ========================= */
+[role='menu'],
+[role='listbox'],
+[role='tooltip'] {
+  background: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) calc((1 - var(--dsw-skin-scrim, 0)) * 78%), transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  backdrop-filter: blur(18px) saturate(1.5);
+  border: 1px solid rgba(150, 190, 245, 0.28);
+  border-radius: 14px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 12px 32px rgba(12, 28, 58, 0.16);
+}
+
+body[data-ds-dark-theme] [role='menu'],
+body[data-ds-dark-theme] [role='listbox'],
+body[data-ds-dark-theme] [role='tooltip'] {
+  background: color-mix(in srgb, var(--dsw-static-neutral-bluish-875) calc((1 - var(--dsw-skin-scrim, 0)) * 78%), transparent);
+  border-color: rgba(120, 160, 210, 0.24);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 14px 34px rgba(0, 0, 0, 0.44);
+}
+
+/* ========================= 10. 代码块 ========================= */
+/* 类名 md-code-block 是 DSH 的稳定类（与哈希类名并列输出），banner/content 是稳定 data 属性 */
+[class*='md-code-block'] {
+  border: 1px solid rgba(150, 190, 245, 0.26);
+  border-radius: 14px;
+  overflow: hidden;
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  backdrop-filter: blur(16px) saturate(1.4);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 6px 20px rgba(12, 28, 58, 0.08);
+}
+
+body[data-ds-dark-theme] [class*='md-code-block'] {
+  border-color: rgba(120, 160, 210, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 8px 22px rgba(0, 0, 0, 0.34);
+}
+
+[data-code-block-banner] {
+  background: rgba(255, 255, 255, 0.26);
+  border-bottom: 1px solid rgba(150, 190, 245, 0.22);
+}
+
+body[data-ds-dark-theme] [data-code-block-banner] {
+  background: rgba(255, 255, 255, 0.05);
+  border-bottom-color: rgba(120, 160, 210, 0.2);
+}
+
+/* ========================= 11. 侧边栏会话项：选中 / 悬停 ========================= */
+[class*='sidebarCol'] [role='treeitem'][aria-selected='true'] {
+  box-shadow:
+    inset 2px 0 0 rgba(120, 200, 255, 0.85),
+    0 0 16px rgba(110, 155, 232, 0.16);
+}
+
+[class*='sidebarCol'] [role='treeitem']:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+
+body[data-ds-dark-theme] [class*='sidebarCol'] [role='treeitem']:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ========================= 12. 底边状态气泡：蓝色描边 ========================= */
+/* 主人点名：输入区最下面「显示轮数的 / 显示费用的」气泡框要加蓝色描边。
+ * 这两个框 = [data-slot='conversation.composer.dock'] 的两个直接子元素：
+ *   .bOPqQW_root  「14 轮 458 步 · 258 tok/s」            —— 轮数/步数/tok
+ *   .cm-root      「本会话 ¥4.89 · 命中 95.1% · …」        —— dsh-cost-meter 费用芯片
+ * 描边本体不在这里写：shell 自己有一条 !important 规则把
+ *   border: var(--dsh-composer-accessory-border, none) !important
+ * 贴到 [data-slot='…composer.dock'] > * 上，特指度 (0,3,1)（dsh-client-ui-workspace）；
+ * 实测在 patches 里压不过它（box-shadow 那条不带 !important，所以能压，border 被 none 顶掉）。
+ * 所以颜色定义在 skin.css 的 --dsh-composer-accessory-border / -shadow，这里只补 hover 加深。
+ * 注意：别给 [data-composer-stats] 里的小胶囊再单独描边 —— 它已经在 .bOPqQW_root 这个框里了。 */
+body [data-slot='conversation.composer.dock'] > * {
+  transition: border-color 0.16s ease;
+}
+
+body [data-slot='conversation.composer.dock'] > *:hover {
+  border-color: rgba(8, 108, 255, 0.85) !important;
+}
+
+body[data-ds-dark-theme] [data-slot='conversation.composer.dock'] > *:hover {
+  border-color: rgba(120, 180, 255, 0.9) !important;
+}

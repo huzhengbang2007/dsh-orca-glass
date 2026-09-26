@@ -1,0 +1,6 @@
+# dsh-orca-glass bundle patch（向 web profile 的 composition 注入一行）
+# 宿主半（lib/index.js）什么都不做，只为让 Loader 树里存在这一行；
+# 浏览器半（lib/client.js）由 __ModuleLoader__ 加载，负责注入 SVG 折射滤镜 + 玻璃 CSS。
+- insert:
+    - id: orca-glass
+      name: 'dsh-orca-glass'

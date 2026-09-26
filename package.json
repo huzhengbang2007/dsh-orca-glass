@@ -1,0 +1,38 @@
+{
+  "name": "dsh-orca-glass",
+  "version": "0.1.4",
+  "private": true,
+  "description": "真·液态玻璃折射层（Liquid glass refraction）for the orca-scene DSH web skin: injects an SVG feTurbulence+feDisplacementMap filter and applies it through backdrop-filter, plus grain, pointer specular, caustics animation, floating glass cards and scrollbar polish.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web"
+    },
+    "bundle": {
+      "patch": "cordis.patch.yml"
+    }
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "liquid-glass",
+    "backdrop-filter",
+    "skin"
+  ],
+  "files": [
+    "lib",
+    "skin",
+    "cordis.patch.yml",
+    "README.md",
+    "screenshots.json",
+    "screenshots"
+  ],
+  "license": "MIT"
+}
